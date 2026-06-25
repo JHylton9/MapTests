@@ -1,4 +1,5 @@
 import { PlacemarkPlay } from "app/components/placemark_play";
+import { env } from "app/lib/env_client";
 import { StrictMode, Suspense, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { Route, Switch } from "wouter";
@@ -8,6 +9,7 @@ import { StyleGuide } from "app/components/style_guide";
 import { UIDMap } from "app/lib/id_mapper";
 import { PersistenceContext } from "app/lib/persistence/context";
 import { MemPersistence } from "app/lib/persistence/memory";
+import { formatTitle } from "app/lib/utils";
 import { createStore, Provider } from "jotai";
 import { Tooltip as T } from "radix-ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -28,7 +30,7 @@ function App() {
                   <PersistenceContext.Provider
                     value={new MemPersistence(idMap.current, store)}
                   >
-                    <title>Placemark Play</title>
+                    <title>{formatTitle(env.APP_TITLE)}</title>
                     <PlacemarkPlay />
                   </PersistenceContext.Provider>
                 </Provider>

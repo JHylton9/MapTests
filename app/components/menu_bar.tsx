@@ -4,6 +4,7 @@ import {
   ReaderIcon,
 } from "@radix-ui/react-icons";
 import { FileInfo } from "app/components/file_info";
+import { env } from "app/lib/env_client";
 import { useSetAtom } from "jotai";
 import { DropdownMenu as DD } from "radix-ui";
 import { memo } from "react";
@@ -22,7 +23,7 @@ export const MenuBarPlay = memo(function MenuBar() {
           title="Home"
         >
           <PlacemarkIcon className="w-8 h-8" />
-          Placemark Play
+          {env.APP_TITLE}
           <a
             href="https://github.com/placemark/placemark"
             className="text-purple-600 hover:text-purple-700 flex items-center gap-1 text-sm bg-purple-100 px-2 py-1 rounded-sm"

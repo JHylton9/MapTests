@@ -70,7 +70,8 @@ export function ImportURLDialog({ onClose }: { onClose: () => void }) {
               .
             </TextWell>
             <TextWell>
-              You can use <code>?load=URL</code> to skip this dialog.
+              You can use <code>?load=URL</code> or{" "}
+              <code>?load=/maps/file.geojson</code> to skip this dialog.
             </TextWell>
           </div>
           <SimpleDialogActions onClose={onClose} action="Load" />

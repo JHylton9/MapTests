@@ -35,8 +35,14 @@ import {
   useWindowResizeSplits,
 } from "app/components/resizer";
 import { MapContext } from "app/context/map_context";
-import { useImportFile, useImportString } from "app/hooks/use_import";
+import {
+  useImportFile,
+  useImportShapefile,
+  useImportString,
+} from "app/hooks/use_import";
 import { DEFAULT_IMPORT_OPTIONS, detectType } from "app/lib/convert";
+import { env } from "app/lib/env_client";
+import type { ShapefileGroup } from "app/lib/group_files";
 import clsx from "clsx";
 import { atom, useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useAtomCallback } from "jotai/utils";
@@ -77,12 +83,138 @@ const persistentTransformAtom = atom<Transform>({
   y: 5,
 });
 
+async function importFromURL({
+  loadSource,
+  doImportFile,
+  doImportShapefile,
+  doImportString,
+  setDialogState,
+}: {
+  loadSource: string;
+  doImportFile: ReturnType<typeof useImportFile>;
+  doImportShapefile: ReturnType<typeof useImportShapefile>;
+  doImportString: ReturnType<typeof useImportString>;
+  setDialogState: (value: { type: "load_text"; initialValue: string }) => void;
+}) {
+  const url = new URL(loadSource, window.location.href);
+
+  if (/\.shp$/i.test(url.pathname)) {
+    const withExtension = (extension: string) => {
+      const next = new URL(url.toString());
+      next.pathname = next.pathname.replace(/\.shp$/i, extension);
+      next.search = "";
+      return next;
+    };
+
+    const fetchFile = async (
+      nextUrl: URL,
+      options?: { optional?: boolean },
+    ) => {
+      const res = await fetch(nextUrl.toString());
+      if (options?.optional && res.status === 404) {
+        return undefined;
+      }
+      if (!res.ok) {
+        throw new Error(
+          `Failed to load ${nextUrl.pathname} (${res.status} ${res.statusText})`,
+        );
+      }
+
+      const buffer = await res.arrayBuffer();
+      return new File([buffer], nextUrl.pathname.split("/").pop() || "", {
+        type: res.headers.get("Content-Type") || "",
+      });
+    };
+
+    const fileGroup: ShapefileGroup = {
+      type: "shapefile",
+      files: {
+        shp: (await fetchFile(withExtension(".shp"))) as File,
+        shx: await fetchFile(withExtension(".shx"), { optional: true }),
+        dbf: await fetchFile(withExtension(".dbf"), { optional: true }),
+        prj: await fetchFile(withExtension(".prj"), { optional: true }),
+        cpg: await fetchFile(withExtension(".cpg"), { optional: true }),
+      },
+    };
+
+    const result = await doImportShapefile(fileGroup, {
+      ...DEFAULT_IMPORT_OPTIONS,
+      type: "shapefile",
+      toast: true,
+    });
+
+    return result.caseOf({
+      Left(err) {
+        throw err;
+      },
+      Right: async (imported) => imported,
+    });
+  }
+
+  if (url.protocol === "http:" || url.protocol === "https:") {
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+      throw new Error(
+        `Failed to load ${url.pathname} (${res.status} ${res.statusText})`,
+      );
+    }
+    const buffer = await res.arrayBuffer();
+    const file = new File([buffer], url.pathname.split("/").pop() || "", {
+      type: res.headers.get("Content-Type") || "",
+    });
+    const options = (await detectType(file)).unsafeCoerce();
+    await doImportFile(file, options, () => {});
+    return;
+  }
+
+  if (url.protocol === "data:") {
+    const [description, ...parts] = url.pathname.split(",");
+    const data = parts.join(",");
+    const [type, encoding] = description.split(";", 2) as [
+      string,
+      string | undefined,
+    ];
+
+    const decoded = match(encoding)
+      .with(undefined, () => decodeURIComponent(data))
+      .with("base64", () => atob(data))
+      .otherwise(() => {
+        throw new Error("Unknown encoding in data url");
+      });
+
+    if (type === "application/json") {
+      await doImportString(
+        decoded,
+        {
+          ...DEFAULT_IMPORT_OPTIONS,
+          type: "geojson",
+        },
+        (...args) => {
+          // eslint-disable-next-line no-console
+          console.log(args);
+        },
+      );
+    } else {
+      setDialogState({
+        type: "load_text",
+        initialValue: decoded,
+      });
+    }
+    return;
+  }
+
+  throw new Error(
+    "Could not handle this load source. Supported sources are http(s), relative paths, and data URLs.",
+  );
+}
+
 function UrlAPI() {
   const doImportString = useImportString();
   const setDialogState = useSetAtom(dialogAtom);
   const doImportFile = useImportFile();
+  const doImportShapefile = useImportShapefile();
   const [searchParams] = useSearchParams();
-  const load = searchParams?.get("load");
+  const load = searchParams?.get("load") || env.DEFAULT_DATA_URL;
   const done = useRef<boolean>(false);
 
   useEffect(() => {
@@ -90,7 +222,15 @@ function UrlAPI() {
       done.current = true;
       (async () => {
         try {
-          const url = new URL(load);
+          await importFromURL({
+            loadSource: load,
+            doImportFile,
+            doImportShapefile,
+            doImportString,
+            setDialogState,
+          });
+          return;
+          /* const url = new URL(load);
           if (url.protocol === "https:") {
             const res = await fetch(url);
             const buffer = await res.arrayBuffer();
@@ -141,6 +281,7 @@ function UrlAPI() {
               "Couldn’t handle this ?load argument - urls and data urls are supported",
             );
           }
+          */
         } catch (e) {
           toast.error(
             e instanceof Error ? e.message : "Failed to load data from URL",
@@ -148,7 +289,7 @@ function UrlAPI() {
         }
       })();
     }
-  }, [load, doImportString, doImportFile, setDialogState]);
+  }, [load, doImportString, doImportFile, doImportShapefile, setDialogState]);
 
   return null;
 }

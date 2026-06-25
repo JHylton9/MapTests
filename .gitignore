@@ -6,6 +6,7 @@ node_modules
 .yarn/build-state.yml
 .pnp.*
 .npm
+.pnpm-store
 web_modules/
 
 # blitz
@@ -33,6 +34,7 @@ blitz-log.log
 # Logs
 logs
 *.log
+.codex-*.log
 
 # Runtime data
 pids
